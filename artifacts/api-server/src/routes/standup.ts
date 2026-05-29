@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { GenerateStandupBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+const client = new OpenAI({
+  apiKey: process.env.NVIDIA_API_KEY,
+  baseURL: "https://integrate.api.nvidia.com/v1",
 });
 
 // =============================================================================
@@ -190,19 +191,20 @@ router.post("/standup/generate", async (req, res): Promise<void> => {
   res.setHeader("Connection", "keep-alive");
 
   try {
-    const stream = anthropic.messages.stream({
-      model: "claude-haiku-4-5",
+    const stream = await client.chat.completions.create({
+      model: "openai/gpt-oss-20b",
       max_tokens: 8192,
-      system,
-      messages: [{ role: "user", content: user }],
+      stream: true,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
     });
 
-    for await (const event of stream) {
-      if (
-        event.type === "content_block_delta" &&
-        event.delta.type === "text_delta"
-      ) {
-        res.write(`data: ${JSON.stringify({ content: event.delta.text })}\n\n`);
+    for await (const chunk of stream) {
+      const text = chunk.choices[0]?.delta?.content;
+      if (text) {
+        res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
       }
     }
 
